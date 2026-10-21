@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "openorch",
+  "description": "OpenOrch - a local-first desktop coding agent with multi-provider models, browser control, and scheduled tasks",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "author": "OpenOrch contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sergio-dev1-py/open-orch.git"
+  },
+  "homepage": "https://github.com/sergio-dev1-py/open-orch",
+  "bugs": {
+    "url": "https://github.com/sergio-dev1-py/open-orch/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "coding-agent",
+    "desktop",
+    "electron",
+    "solidjs",
+    "automation",
+    "browser-automation",
+    "mcp",
+    "llm"
+  ],
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "bun": ">=1.4.0",
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd apps/desktop dev",
+    "start": "bun run --cwd apps/desktop dev",
+    "catalog": "bun run scripts/build-catalog.ts",
+    "mock": "bun run scripts/mock-provider.ts",
+    "e2e": "bun run scripts/e2e.ts",
+    "check:core": "bun run scripts/check-core.ts",
+    "check:bridge": "bun run scripts/check-bridge.ts",
+    "check:schedule": "bun run scripts/check-schedule.ts",
+    "check:extension": "bun run scripts/check-extension-live.ts",
+    "check:zen": "bun run scripts/check-zen.ts",
+    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/core typecheck && bun run --cwd apps/desktop typecheck"
+  },
+  "trustedDependencies": [
+    "electron",
+    "@vscode/ripgrep",
+    "esbuild"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "playwright-core": "^1.64.1",
+    "typescript": "^5.6.0"
+  }
+}

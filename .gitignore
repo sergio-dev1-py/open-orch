@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.bun/
+
+# Build output
+out/
+dist/
+out-tsc/
+*.tsbuildinfo
+.vite/
+.cache/
+coverage/
+playwright-report/
+test-results/
+
+# Local app data and databases
+.data/
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+schedules.json
+browser-bridge.json
+mcp-auth.json
+console-config.json
+model.json
+models-catalog.json
+openorch.db*
+
+# User-specific agent configuration and installed skills
+.openorch/
+.opencode/
+.agents/
+.claude/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Logs and temporary files
+*.log
+*.tmp
+*.zip
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+
+# Temporary generator output
+.tmp-*

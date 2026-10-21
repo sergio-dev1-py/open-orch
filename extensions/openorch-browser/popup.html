@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenOrch Browser</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="logo">O</span>
+        <div>
+          <h1>OpenOrch Browser</h1>
+          <p id="version">v0.1.0</p>
+        </div>
+      </div>
+      <span id="dot" class="dot off" title="Desconectado"></span>
+    </header>
+
+    <p id="state" class="state">Desconectado</p>
+    <p id="error" class="error hidden"></p>
+
+    <label>
+      Servidor local
+      <input id="server" type="text" spellcheck="false" placeholder="ws://127.0.0.1:45871" />
+    </label>
+    <label>
+      Código de conexión
+      <input id="token" type="text" spellcheck="false" placeholder="Pega el código de Ajustes → Navegador" />
+    </label>
+
+    <div class="row">
+      <button id="connect" class="primary">Conectar</button>
+      <button id="disconnect">Desconectar</button>
+    </div>
+
+    <div class="row">
+      <button id="stop" class="danger">Soltar pestañas</button>
+      <button id="test">Pestaña de prueba</button>
+    </div>
+
+    <p class="hint">
+      El agente solo puede leer y actuar en pestañas del grupo <b>OpenOrch</b>. Las demás pestañas quedan fuera.
+      Si aparece un CAPTCHA o un login, el agente se detiene y te pide que lo resuelvas.
+    </p>
+    <p class="hint small">
+      Carga esta carpeta en <code>edge://extensions</code> con el <b>modo desarrollador</b> activado.
+      El código de conexión está en OpenOrch: <b>Ajustes → Navegador</b>.
+    </p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

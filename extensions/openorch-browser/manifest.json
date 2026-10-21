@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "OpenOrch Browser",
+  "version": "0.1.0",
+  "description": "Permite que tu agente OpenOrch controle este navegador, solo en pestañas del grupo OpenOrch y con tu permiso.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "debugger",
+    "tabs",
+    "tabGroups",
+    "storage",
+    "alarms",
+    "windows"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "OpenOrch Browser",
+    "default_popup": "popup.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*;"
+  }
+}

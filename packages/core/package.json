@@ -1,0 +1,38 @@
+{
+  "name": "@openorch/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/turndown": "^5.0.6",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.81",
+    "@ai-sdk/cerebras": "^3.0.70",
+    "@ai-sdk/deepseek": "^3.0.66",
+    "@ai-sdk/google": "^4.0.97",
+    "@ai-sdk/groq": "^4.0.62",
+    "@ai-sdk/mistral": "^4.0.65",
+    "@ai-sdk/openai": "^4.0.95",
+    "@ai-sdk/openai-compatible": "^3.0.70",
+    "@ai-sdk/togetherai": "^3.0.71",
+    "@ai-sdk/xai": "^5.0.23",
+    "@lydell/node-pty": "^1.2.0-beta.15",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@openorch/shared": "workspace:*",
+    "@openrouter/ai-sdk-provider": "^3.1.0",
+    "@vscode/ripgrep": "^1.18.0",
+    "ai": "^7.0.142",
+    "diff": "^9.0.0",
+    "turndown": "^7.2.4",
+    "zod": "^4.6.7"
+  }
+}

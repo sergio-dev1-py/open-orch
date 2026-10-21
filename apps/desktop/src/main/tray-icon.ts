@@ -1,0 +1,3 @@
+/** 32×32 tray/notification icon (orange clock, monochrome-friendly). */
+export const TRAY_ICON_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABD0lEQVR4nO1Xyw3DIAzNTpkhM3iGTOAp2Co7RF6gB86p1AuiQkI9hJ/t0hRVRXqXBPyejTFmmv5DMAhhIQRDCBshWEJwETZ+C/+W7kElhJUQdkLwTIS5aw/iOXrmlQhrZy05xPD6NxFsgIY8a9A/jlsNFSEgCXviOYOgNc+xtiO35yWj/nHchSI2TrYnxireZgU01pZPx/motcLOEZBZv9eKDNt7joCKjbRYxSrGJucKKNgyzeT7sIA0GWM9v0qAzQlwCgEvCAW47gJCNM6QCrAXRsB2SUIuuEloLhRguhQiJbkvdk3SUswhZ5dizWWk9H7tdh0LPc8n33ANyddbsiGa0iHa8iEeJsM8zaZfHk+Qgfn/AiO+tAAAAABJRU5ErkJggg=="
