@@ -842,6 +842,43 @@ await engine.shutdown()
   } finally {
     remote.kill()
   }
+
+  // Reusing an unchanged MCP entry must not spawn another npx/Node process.
+  const spawnLog = path.join(sandbox, "mcp-reuse-spawns.log")
+  writeFileSync(spawnLog, "")
+  const localEntries = {
+    reuse: {
+      config: {
+        type: "local" as const,
+        command: stdioCommand,
+        environment: { OPENORCH_MCP_SPAWN_LOG: spawnLog },
+      },
+      scope: "global" as const,
+    },
+  }
+  const spawned = () => readFileSync(spawnLog, "utf8").split(/\r?\n/).filter(Boolean).length
+  manager.updateServers(localEntries)
+  await manager.connectAll()
+  const firstSpawn = spawned()
+  await manager.sync(localEntries)
+  const afterUnchanged = spawned()
+  const changedEntries = {
+    reuse: {
+      config: {
+        ...localEntries.reuse.config,
+        environment: { OPENORCH_MCP_SPAWN_LOG: spawnLog, MOCK_ENV: "reused" },
+      },
+      scope: "global" as const,
+    },
+  }
+  await manager.sync(changedEntries)
+  const afterChanged = spawned()
+  check(
+    "mcp: an unchanged server is reused instead of respawned",
+    firstSpawn === 1 && afterUnchanged === 1 && afterChanged === 2,
+    `spawns=${firstSpawn}/${afterUnchanged}/${afterChanged}`,
+  )
+  await manager.closeAll()
 }
 
 {
