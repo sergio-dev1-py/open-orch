@@ -493,7 +493,10 @@ async function main(): Promise<void> {
   await composer.fill("Piensa paso a paso antes de responder")
   await page.keyboard.press("Enter")
   await page.waitForSelector(".reasoning", { timeout: 30_000 })
-  const reasoningText = await page.locator(".reasoning").first().innerText()
+  const reasoningBlock = page.locator(".reasoning").first()
+  await reasoningBlock.scrollIntoViewIfNeeded()
+  await page.waitForTimeout(250)
+  const reasoningText = await reasoningBlock.innerText()
   check("reasoning: thinking block rendered", reasoningText.toLowerCase().includes("pensando") || reasoningText.toLowerCase().includes("pensamiento") || reasoningText.length > 0, reasoningText.slice(0, 40))
   await page.screenshot({ path: path.join(shotsDir, "06-reasoning.png") })
   await page.waitForTimeout(1500)
@@ -967,7 +970,10 @@ async function main(): Promise<void> {
   // The header shows the inherited model next to the description.
   await page.waitForSelector("text=Explorar con herencia", { timeout: 30_000 })
   await page.waitForTimeout(3000)
-  const inheritedCard = await page.locator(".tool-card:has-text('Explorar con herencia')").first().innerText()
+  const inheritedToolCard = page.locator(".tool-card:has-text('Explorar con herencia')").first()
+  await inheritedToolCard.scrollIntoViewIfNeeded()
+  await page.waitForTimeout(250)
+  const inheritedCard = await inheritedToolCard.innerText()
   check("subagents: card shows the inherited model", inheritedCard.includes("gpt-5.4"), inheritedCard.replaceAll("\n", " | ").slice(0, 110))
   check("subagents: card shows the minimal thinking level", inheritedCard.includes("#none"), inheritedCard.replaceAll("\n", " | ").slice(0, 110))
   {
