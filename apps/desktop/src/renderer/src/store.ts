@@ -270,12 +270,33 @@ export const activeQuestions = createMemo(() =>
 )
 export const primaryAgents = createMemo(() => state.agents.filter((agent) => agent.mode !== "subagent" && !agent.hidden))
 
+/** Sessions whose transcript changed while another session was on screen. */
+const staleTranscripts = new Set<string>()
+/** Recently loaded transcripts, newest last. Keeps memory bounded across switches. */
+const loadedTranscriptOrder: string[] = []
+const MAX_LOADED_TRANSCRIPTS = 6
+
 async function ensureMessages(sessionID: string, force = false): Promise<void> {
   if (!force && state.messages[sessionID]) return
   const messages = await api.messages(sessionID)
   setState("messages", sessionID, messages)
   const busy = await api.sessionBusy(sessionID)
   setState("busy", sessionID, busy)
+}
+
+function rememberLoadedTranscript(sessionID: string): void {
+  const index = loadedTranscriptOrder.indexOf(sessionID)
+  if (index !== -1) loadedTranscriptOrder.splice(index, 1)
+  loadedTranscriptOrder.push(sessionID)
+  while (loadedTranscriptOrder.length > MAX_LOADED_TRANSCRIPTS) {
+    const oldest = loadedTranscriptOrder.shift()
+    if (!oldest || oldest === state.activeSessionID) continue
+    setState(
+      produce((draft) => {
+        delete draft.messages[oldest]
+      }),
+    )
+  }
 }
 
 export async function loadInitial(): Promise<void> {
@@ -369,11 +390,19 @@ export async function refreshAgents(): Promise<void> {
 }
 
 export async function selectSession(sessionID: string): Promise<void> {
-  // Transcript events are only forwarded for the watched session, so a session
-  // that was in the background may have changed since it was last rendered.
+  // Transcript events are only forwarded for the watched session. Reload only
+  // sessions that were busy or changed in the background; reloading a large,
+  // idle transcript on every click is expensive and can stall the renderer.
   const changed = state.activeSessionID !== sessionID
+  const force = staleTranscripts.has(sessionID) || (changed && Boolean(state.busy[sessionID]))
   setState("activeSessionID", sessionID)
-  await ensureMessages(sessionID, changed)
+  try {
+    await ensureMessages(sessionID, force)
+    staleTranscripts.delete(sessionID)
+    rememberLoadedTranscript(sessionID)
+  } catch (error) {
+    setState("error", error instanceof Error ? error.message : String(error))
+  }
 }
 
 export async function createSession(input?: { directory?: string; agent?: string }): Promise<SessionInfo> {
@@ -386,6 +415,11 @@ export async function createSession(input?: { directory?: string; agent?: string
 
 export async function deleteSession(sessionID: string): Promise<void> {
   await api.deleteSession(sessionID)
+  staleTranscripts.delete(sessionID)
+  {
+    const index = loadedTranscriptOrder.indexOf(sessionID)
+    if (index !== -1) loadedTranscriptOrder.splice(index, 1)
+  }
   setState(
     produce((draft) => {
       draft.sessions = draft.sessions.filter((session) => session.id !== sessionID)
@@ -496,6 +530,11 @@ export function applyEvent(event: EngineEvent): void {
       upsertSession(event.session)
       break
     case "session.deleted":
+      staleTranscripts.delete(event.sessionID)
+      {
+        const index = loadedTranscriptOrder.indexOf(event.sessionID)
+        if (index !== -1) loadedTranscriptOrder.splice(index, 1)
+      }
       setState(
         produce((draft) => {
           draft.sessions = draft.sessions.filter((session) => session.id !== event.sessionID)
@@ -506,6 +545,9 @@ export function applyEvent(event: EngineEvent): void {
       break
     case "session.status":
       setState("busy", event.sessionID, event.status === "busy")
+      // A background run may have appended messages while its transcript was
+      // not being watched. Reload it when the user opens it again.
+      if (event.status === "idle" && event.sessionID !== state.activeSessionID) staleTranscripts.add(event.sessionID)
       break
     case "message.created":
     case "message.updated": {

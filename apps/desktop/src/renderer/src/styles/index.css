@@ -490,6 +490,20 @@ select {
   gap: 14px;
   padding-bottom: 12px;
 }
+/* Large sessions (often with hundreds of tool cards) only lay out rows near
+   the viewport. This keeps switching sessions cheap without hiding any data. */
+.timeline-inner > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
+}
+.message-error {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--error) 35%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+  color: var(--error);
+  font-size: 12.5px;
+}
 
 .jump-bottom {
   position: absolute;

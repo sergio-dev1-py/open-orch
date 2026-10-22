@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { ErrorBoundary, For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { Composer } from "./components/Composer"
 import { ConfirmDialog } from "./components/ConfirmDialog"
 import { Dock, DockFloats } from "./components/Dock"
@@ -277,10 +277,12 @@ export function App() {
               <div class="timeline-inner">
                 <For each={activeMessages()}>
                   {(message, index) => (
-                    <MessageView
-                      message={message}
-                      showFooter={message.role === "assistant" ? isLastOfRun(activeMessages(), index()) : undefined}
-                    />
+                    <ErrorBoundary fallback={() => <div class="message-error">{t("app.messageError")}</div>}>
+                      <MessageView
+                        message={message}
+                        showFooter={message.role === "assistant" ? isLastOfRun(activeMessages(), index()) : undefined}
+                      />
+                    </ErrorBoundary>
                   )}
                 </For>
               </div>

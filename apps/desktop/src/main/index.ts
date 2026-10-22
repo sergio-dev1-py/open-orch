@@ -232,6 +232,8 @@ async function createWindow(): Promise<void> {
     else mainWindow?.show()
     refreshTray()
   })
+  mainWindow.on("unresponsive", () => console.error("[main] window became unresponsive"))
+  mainWindow.on("responsive", () => console.log("[main] window is responsive again"))
   mainWindow.on("close", (event) => {
     if (!quitting && hasBackgroundTasks()) {
       event.preventDefault()

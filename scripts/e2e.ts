@@ -159,6 +159,8 @@ async function main(): Promise<void> {
   })
   appHandle = app
   const page = await app.firstWindow()
+  const pageErrors: string[] = []
+  page.on("pageerror", (error) => pageErrors.push(error.message))
   await page.waitForLoadState("domcontentloaded")
   // Electron userData (localStorage) is shared between runs: start with a fresh dock
   // layout so tab counts are deterministic (the store reads it at module init).
@@ -1878,6 +1880,19 @@ async function main(): Promise<void> {
   )
   await page.keyboard.press("Escape")
   await page.waitForTimeout(400)
+
+  // ---------------------------------------------------------------- session switching
+  const switchTargets = page.locator(".session-item")
+  const switchCount = await switchTargets.count()
+  for (let index = 0; index < Math.min(switchCount, 6); index += 1) {
+    await switchTargets.nth(index).click()
+    await page.waitForTimeout(250)
+  }
+  check(
+    "sessions: switching through recent transcripts does not crash",
+    pageErrors.length === 0 && (await page.locator(".message-error").count()) === 0,
+    pageErrors.join(" | ").slice(0, 120),
+  )
 
   // ---------------------------------------------------------------- delete confirmation
   const sessionCountBefore = await page.locator(".session-item").count()
