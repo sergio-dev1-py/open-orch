@@ -429,7 +429,9 @@ export class Engine {
   }
 
   async init(): Promise<void> {
-    await this.refreshMcp().catch((error) => this.log(`mcp init failed: ${String(error)}`))
+    // MCP processes (especially npx-based servers) can take seconds to start.
+    // Never keep the window hidden while they boot; the status arrives via events.
+    void this.refreshMcp().catch((error) => this.log(`mcp init failed: ${String(error)}`))
     // Live models.dev catalog (like upstream): apply the cache instantly and refresh
     // in the background when it is stale, so new models and their real reasoning
     // levels show up without rebuilding the app.
