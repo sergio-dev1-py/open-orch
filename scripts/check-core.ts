@@ -320,6 +320,39 @@ engine.store.save(session.id)
 const measured = engine.estimateSessionTokens(session.id, { id: "mock-model", providerID: "mock", name: "mock" })
 check("compaction: measured anchor drives the estimate", measured >= 5_200 && measured < 8_000, `${measured} tokens`)
 
+{
+  // Private split helper under test: a short conversation must still be
+  // compactable, and the newest exchange should be retained when possible.
+  const split = (engine as unknown as {
+    splitCompaction: (active: unknown[], keep: number) => { older: unknown[]; recent: unknown[] }
+  }).splitCompaction.bind(engine)
+  const user = (id: string, text: string) => ({ id, sessionID: session.id, role: "user", text, time: { created: 1 } })
+  const assistant = (id: string, text: string) => ({
+    id,
+    sessionID: session.id,
+    role: "assistant",
+    agent: "build",
+    model: { providerID: "mock", modelID: "mock-model" },
+    content: [{ type: "text", id: `${id}_p`, text }],
+    time: { created: 1, completed: 2 },
+  })
+  const short = split([user("u1", "Hola"), assistant("a1", "Respuesta")], 15_000)
+  check(
+    "compaction: a short single-exchange session is still compactable",
+    short.older.length === 2 && short.recent.length === 0,
+    `older=${short.older.length} recent=${short.recent.length}`,
+  )
+  const exchanges = split(
+    [user("u2", "Primera"), assistant("a2", "Uno"), user("u3", "Segunda"), assistant("a3", "Dos")],
+    15_000,
+  )
+  check(
+    "compaction: the latest exchange is kept verbatim when there is older history",
+    exchanges.older.length === 2 && exchanges.recent.length === 2,
+    `older=${exchanges.older.length} recent=${exchanges.recent.length}`,
+  )
+}
+
 const child = engine.createSession({ directory: workspace, agent: "explore", parentID: session.id })
 check("subagents: child inherits parent affinity headers", headers["x-opencode-session"] !== undefined && child.parentID === session.id)
 // @ts-expect-error private helper under test

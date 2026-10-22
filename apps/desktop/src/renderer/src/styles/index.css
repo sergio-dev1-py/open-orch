@@ -629,12 +629,33 @@ select {
   padding: 8px 12px;
   background: var(--bg-panel);
 }
-.msg-compaction pre {
-  margin: 6px 0 0;
-  white-space: pre-wrap;
+.msg-compaction-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.msg-compaction-head:disabled {
+  cursor: default;
+}
+.msg-compaction-toggle {
+  margin-left: auto;
+  font-size: 13px;
+}
+.msg-compaction-summary {
+  margin-top: 8px;
   color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
+}
+.msg-compaction-summary .md {
+  font-size: 13px;
 }
 
 /* ------------------------------------------------------------------- markdown */

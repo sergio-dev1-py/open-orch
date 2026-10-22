@@ -1796,6 +1796,46 @@ async function main(): Promise<void> {
     await page.screenshot({ path: path.join(shotsDir, "17-agent-browser.png") })
   }
 
+  // ---------------------------------------------------------------- compaction
+  await page.click(".new-session")
+  await page.waitForSelector(".composer textarea", { timeout: 10_000 })
+  await page.locator(".composer textarea").fill("Dame una nota breve sobre OpenOrch.")
+  await page.keyboard.press("Enter")
+  await page.waitForFunction(() => document.body.innerText.includes("He completado"), { timeout: 20_000 })
+  const compactionSession = (
+    (await page.evaluate(() => window.openorch.invoke("sessions.list"))) as { id: string; title: string }[]
+  )[0]
+  await page.evaluate((id) => window.openorch.invoke("sessions.compact", id), compactionSession.id)
+  await page.waitForSelector(".msg-compaction .msg-compaction-summary .md", { timeout: 20_000 })
+  const compactionCard = await page.locator(".msg-compaction").last().innerText()
+  const compactedTimeline = await page.locator(".timeline-inner").innerText()
+  check(
+    "compaction: manual compact shows the summary expanded at the end",
+    compactionCard.includes("Contexto compactado") && !compactionCard.includes("Nothing to compact"),
+    compactionCard.replaceAll("\n", " | ").slice(0, 100),
+  )
+  check(
+    "compaction: the previous conversation remains visible",
+    compactedTimeline.includes("Dame una nota breve sobre OpenOrch."),
+  )
+  {
+    const db = new Database(path.join(dataDir, "openorch.db"), { readonly: true })
+    const oldMessage = db
+      .query("SELECT COUNT(*) AS c FROM message WHERE session_id = ? AND data LIKE ?")
+      .get(compactionSession.id, "%Dame una nota breve sobre OpenOrch.%") as { c: number }
+    const checkpoints = db
+      .query("SELECT COUNT(*) AS c FROM message WHERE session_id = ? AND json_extract(data, '$.role') = 'compaction'")
+      .get(compactionSession.id) as { c: number }
+    db.close()
+    check(
+      "compaction: old messages stay in SQLite while the checkpoint is stored",
+      oldMessage.c >= 1 && checkpoints.c >= 1,
+      `old=${oldMessage.c} checkpoints=${checkpoints.c}`,
+    )
+  }
+  await page.evaluate((id) => window.openorch.invoke("sessions.delete", id), compactionSession.id)
+  await page.waitForTimeout(500)
+
   // ---------------------------------------------------------------- scheduled tasks
   await page.click(".schedule-button")
   const scheduleOpen = await page.waitForSelector(".schedule-modal", { timeout: 10_000 }).then(() => true).catch(() => false)
