@@ -2298,6 +2298,41 @@ export class Engine {
     return total
   }
 
+  /**
+   * Splits the post-checkpoint conversation into the part that gets summarized
+   * and the newest exchange(s) kept verbatim. Mirrors OpenCode's
+   * `splitConversation`: when everything fits `keep`, still keep only the latest
+   * exchange (or summarize a single exchange completely). This is what makes
+   * manual `/compact` work in short conversations instead of saying
+   * "Nothing to compact yet".
+   */
+  private splitCompaction(active: Message[], keep: number): { older: Message[]; recent: Message[] } {
+    if (active.length === 0) return { older: [], recent: [] }
+
+    let boundary = active.length
+    let accumulated = 0
+    for (let i = active.length - 1; i >= 0; i--) {
+      const size = this.estimateMessageTokens(active[i])
+      if (accumulated + size > keep) {
+        boundary = i + 1
+        break
+      }
+      accumulated += size
+      boundary = i
+    }
+
+    if (boundary === 0) {
+      const latestUser = findLastIndex(active, (message) => message.role === "user" || message.role === "synthetic")
+      boundary = latestUser > 0 ? latestUser : active.length
+    }
+
+    while (boundary < active.length && active[boundary].role !== "user" && active[boundary].role !== "synthetic") {
+      boundary++
+    }
+
+    return { older: active.slice(0, boundary), recent: active.slice(boundary) }
+  }
+
   private async compactNow(sessionID: string, reason: "auto" | "manual" | "overflow"): Promise<void> {
     const record = this.store.get(sessionID)
     if (!record) return
@@ -2309,13 +2344,11 @@ export class Engine {
     if (reason !== "overflow") this.overflowShrink.delete(sessionID)
     const messages = record.messages
 
-    let prefixEnd = 0
     let activeStart = 0
     let previousSummary: string | undefined
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i]
       if (message.role === "compaction" && message.status === "completed") {
-        prefixEnd = i
         activeStart = i + 1
         previousSummary = message.summary
         break
@@ -2327,35 +2360,7 @@ export class Engine {
       return
     }
 
-    let accumulated = 0
-    let boundary = active.length
-    for (let i = active.length - 1; i >= 0; i--) {
-      const message = active[i]
-      let size = 0
-      if (message.role === "user" || message.role === "synthetic") size = estimateTokens(message.text)
-      else if (message.role === "shell") size = estimateTokens(message.output ?? "")
-      else if (message.role === "assistant") {
-        size = message.content.reduce(
-          (sum, part) => sum + (part.type === "text" || part.type === "reasoning" ? estimateTokens(part.text) : 200),
-          0,
-        )
-      }
-      accumulated += size
-      if (accumulated > keep) {
-        boundary = i + 1
-        break
-      }
-      boundary = i
-    }
-    while (
-      boundary < active.length &&
-      active[boundary].role !== "user" &&
-      active[boundary].role !== "synthetic"
-    ) {
-      boundary++
-    }
-    const older = active.slice(0, boundary)
-    const recent = active.slice(boundary)
+    const { older } = this.splitCompaction(active, keep)
     if (older.length === 0) {
       if (reason === "manual") this.synthetic(sessionID, "Nothing to compact yet.", { resume: false })
       return
@@ -2406,14 +2411,12 @@ export class Engine {
         compactionMessage.status = "completed"
         compactionMessage.time.completed = Date.now()
       }
-      record.messages = [...messages.slice(0, prefixEnd), compactionMessage, ...recent]
-      this.store.markRewrite(sessionID)
+      // Keep the previous transcript. The checkpoint is appended like any other
+      // message, so it appears at the end of the conversation and later turns
+      // continue after it. toModelMessages() starts at this latest checkpoint,
+      // so the model never receives the older context.
+      this.appendMessage(sessionID, compactionMessage)
       if (reason === "overflow") this.overflowShrink.set(sessionID, shrinkIndex + 1)
-      for (const removed of older) {
-        this.emit({ type: "message.deleted", sessionID, messageID: removed.id })
-      }
-      this.emit({ type: "message.created", sessionID, message: compactionMessage })
-      this.touch(record.info)
       this.persist(sessionID, true)
     } catch (error) {
       if (compactionMessage.role === "compaction") {
@@ -2421,10 +2424,7 @@ export class Engine {
         compactionMessage.error = error instanceof Error ? error.message : String(error)
         compactionMessage.time.completed = Date.now()
       }
-      this.emit({ type: "message.updated", sessionID, message: compactionMessage })
-      if (!record.messages.some((message) => message.id === compactionMessage.id)) {
-        record.messages.splice(prefixEnd, 0, compactionMessage)
-      }
+      this.appendMessage(sessionID, compactionMessage)
       this.persist(sessionID, true)
       throw error
     }

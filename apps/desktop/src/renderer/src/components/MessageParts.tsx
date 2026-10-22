@@ -164,10 +164,19 @@ function ShellMessageView(props: { message: ShellMessage }) {
 }
 
 function CompactionMessageView(props: { message: CompactionMessage }) {
-  const [open, setOpen] = createSignal(false)
+  // The summary is the useful result of compaction. Show it by default, like
+  // a normal assistant message, while keeping a small collapse control.
+  const [open, setOpen] = createSignal(true)
+  const hasSummary = () => props.message.status !== "running" && Boolean(props.message.summary?.trim())
   return (
-    <div class="msg-compaction" onClick={() => setOpen(!open())} style={{ cursor: "pointer", display: "block" }}>
-      <div style={{ display: "flex", gap: "8px", "align-items": "center" }}>
+    <div class="msg-compaction" style={{ display: "block" }}>
+      <button
+        type="button"
+        class="msg-compaction-head"
+        aria-expanded={open()}
+        onClick={() => setOpen(!open())}
+        disabled={!hasSummary()}
+      >
         <Show when={props.message.status === "running"}>
           <span class="spinner" />
         </Show>
@@ -178,10 +187,14 @@ function CompactionMessageView(props: { message: CompactionMessage }) {
             <Match when={true}>{t("compaction.completed")}</Match>
           </Switch>
         </span>
-        <span style={{ "margin-left": "auto", "font-size": "11px" }}>{open() ? "▾" : "▸"}</span>
-      </div>
-      <Show when={open() && props.message.summary}>
-        <pre>{props.message.summary}</pre>
+        <Show when={hasSummary()}>
+          <span class="msg-compaction-toggle">{open() ? "−" : "+"}</span>
+        </Show>
+      </button>
+      <Show when={open() && hasSummary()}>
+        <div class="msg-compaction-summary">
+          <Markdown text={props.message.summary} />
+        </div>
       </Show>
     </div>
   )
