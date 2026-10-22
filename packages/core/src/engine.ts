@@ -233,6 +233,8 @@ export class Engine {
   private persistenceTimers = new Map<string, NodeJS.Timeout>()
   private configWatcher: ReturnType<typeof watch> | undefined
   private projectWatchers: ReturnType<typeof watch>[] = []
+  private mcpRefresh: Promise<void> | undefined
+  private mcpKey = ""
   /** Bumped when a streamed message is committed; stale buffered deltas are dropped. */
   private streamGeneration = new Map<string, number>()
   /** Consecutive overflow compaction attempts per session (drives SHRINK_STEPS). */
@@ -323,11 +325,31 @@ export class Engine {
     return mergeMcpServers(this.configStore.get().mcp, projectFiles)
   }
 
-  /** Recomputes the server set (config + project files) and reconnects everything. */
+  /**
+   * Recomputes the server set (config + project files) and applies only the
+   * difference. A workspace switch with the same global MCP set must not restart
+   * `npx`-launched servers: that used to take seconds and leave child Node
+   * processes behind on Windows.
+   */
   private async refreshMcp(): Promise<void> {
-    this.mcp.updateServers(this.effectiveMcpServers())
     this.watchProjectMcp()
-    await this.mcp.connectAll().catch((error) => this.log(`mcp reconnect failed: ${String(error)}`))
+    if (this.mcpRefresh) return this.mcpRefresh
+    this.mcpRefresh = (async () => {
+      try {
+        // Re-read until the effective set is stable; a config watcher may fire
+        // while an earlier reconciliation is still in flight.
+        while (true) {
+          const entries = this.effectiveMcpServers()
+          const key = JSON.stringify(entries)
+          if (key === this.mcpKey) return
+          await this.mcp.sync(entries).catch((error) => this.log(`mcp sync failed: ${String(error)}`))
+          this.mcpKey = key
+        }
+      } finally {
+        this.mcpRefresh = undefined
+      }
+    })()
+    return this.mcpRefresh
   }
 
   /** Watches the project MCP files so edits apply live too. */
@@ -381,11 +403,11 @@ export class Engine {
       this.agents.reload(this.projectDirectory)
       this.permissions.updateConfig(next)
       if (JSON.stringify(next.mcp) !== previousMcp || next.lastDirectory !== previousDirectory) {
-        await this.refreshMcp()
+        void this.refreshMcp().catch((error) => this.log(`mcp refresh failed: ${String(error)}`))
       }
       this.emit({ type: "config.updated" })
-      this.emit({ type: "agents.updated" })
-      this.emit({ type: "providers.updated" })
+      if (JSON.stringify(next.agents) !== JSON.stringify(previous.agents)) this.emit({ type: "agents.updated" })
+      if (JSON.stringify(next.providers) !== JSON.stringify(previous.providers)) this.emit({ type: "providers.updated" })
       this.log("config reloaded from disk")
     } catch (error) {
       this.log(`config reload failed: ${String(error)}`)
@@ -407,7 +429,9 @@ export class Engine {
   }
 
   async init(): Promise<void> {
-    await this.refreshMcp().catch((error) => this.log(`mcp init failed: ${String(error)}`))
+    // MCP processes (especially npx-based servers) can take seconds to start.
+    // Never keep the window hidden while they boot; the status arrives via events.
+    void this.refreshMcp().catch((error) => this.log(`mcp init failed: ${String(error)}`))
     // Live models.dev catalog (like upstream): apply the cache instantly and refresh
     // in the background when it is stale, so new models and their real reasoning
     // levels show up without rebuilding the app.
@@ -594,13 +618,17 @@ export class Engine {
     const next = this.configStore.set(patch)
     this.agents.reload(this.projectDirectory)
     this.permissions.updateConfig(next)
-    // MCP servers: reconnect when the entries change or the workspace moves (project files).
+    // MCP servers: update the project watchers now, but never make a workspace
+    // switch wait for a heavy npx MCP process to restart. The sync is a no-op
+    // when the effective server set did not change.
     if (JSON.stringify(previous.mcp) !== JSON.stringify(next.mcp) || previous.lastDirectory !== next.lastDirectory) {
-      await this.refreshMcp()
+      void this.refreshMcp().catch((error) => this.log(`mcp refresh failed: ${String(error)}`))
     }
+    const providersChanged = JSON.stringify(previous.providers) !== JSON.stringify(next.providers)
+    const agentsChanged = JSON.stringify(previous.agents) !== JSON.stringify(next.agents)
     this.emit({ type: "config.updated" })
-    this.emit({ type: "agents.updated" })
-    this.emit({ type: "providers.updated" })
+    if (agentsChanged) this.emit({ type: "agents.updated" })
+    if (providersChanged) this.emit({ type: "providers.updated" })
     return next
   }
 

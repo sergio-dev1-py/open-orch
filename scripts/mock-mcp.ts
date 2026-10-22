@@ -2,6 +2,16 @@
  * Minimal MCP stdio server for the e2e: newline-delimited JSON-RPC 2.0 on stdio
  * with a single `echo` tool. Usage: bun run scripts/mock-mcp.ts
  */
+import { appendFileSync } from "node:fs"
+
+if (process.env.OPENORCH_MCP_SPAWN_LOG) {
+  try {
+    appendFileSync(process.env.OPENORCH_MCP_SPAWN_LOG, `${process.pid}\n`)
+  } catch {
+    // best effort: the test still works without the log
+  }
+}
+
 interface Request {
   id?: unknown
   method?: string

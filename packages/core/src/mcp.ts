@@ -1,4 +1,5 @@
 import { createServer } from "node:http"
+import { spawnSync } from "node:child_process"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -22,6 +23,8 @@ interface ServerState {
   name: string
   scope: "global" | "project"
   client?: Client
+  transport?: StdioClientTransport | StreamableHTTPClientTransport
+  pid?: number
   status: "connected" | "error" | "needs-auth"
   error?: string
 }
@@ -114,6 +117,45 @@ export class McpManager {
         await this.connect(name, entry)
       }),
     )
+    await this.rebuildTools()
+  }
+
+  /**
+   * Applies a new server set without restarting servers whose configuration is
+   * unchanged. Workspace switches usually leave the global MCP set untouched;
+   * reconnecting `npx`-launched servers there costs seconds and leaks children
+   * on Windows if the whole process tree is not terminated.
+   */
+  async sync(entries: Record<string, McpServerEntry>): Promise<void> {
+    const previous = this.entries
+    const names = new Set([...Object.keys(previous), ...Object.keys(entries)])
+    const changed: string[] = []
+    for (const name of names) {
+      const before = previous[name]
+      const after = entries[name]
+      if (!before || !after || before.scope !== after.scope || JSON.stringify(before.config) !== JSON.stringify(after.config)) {
+        changed.push(name)
+      }
+    }
+    this.entries = entries
+    for (const name of changed) {
+      const state = this.servers.get(name)
+      if (!state) continue
+      this.servers.delete(name)
+      await this.closeState(state)
+    }
+    for (const name of changed) {
+      const entry = entries[name]
+      if (!entry || entry.config.enabled === false) continue
+      await this.connect(name, entry)
+    }
+    await this.rebuildTools()
+    this.onStatus(changed.length === 0 ? "MCP configuration unchanged" : `MCP servers updated: ${changed.join(", ")}`)
+  }
+
+  private async rebuildTools(): Promise<void> {
+    this.toolDefs = []
+    this.serverLines = []
     for (const [name, state] of this.servers) {
       if (state.status !== "connected" || !state.client) continue
       const serverTools = await this.collectTools(name, state.client, this.entries[name]?.config).catch((error) => {
@@ -127,6 +169,18 @@ export class McpManager {
         this.serverLines.push(`"${name}" provides: ${serverTools.map((tool) => tool.name).join(", ")}`)
       }
     }
+  }
+
+  private async closeState(state: ServerState): Promise<void> {
+    const pid = state.pid
+    // Kill the tree before asking the SDK to close. The SDK waits up to four
+    // seconds for a stdio child, and killing only the cmd/npx wrapper leaves
+    // its Node descendants alive on Windows.
+    if (pid) killProcessTree(pid)
+    await Promise.race([
+      Promise.resolve(state.client?.close?.()).catch(() => undefined),
+      new Promise<void>((resolve) => setTimeout(resolve, 750)),
+    ])
   }
 
   /** Builds the transport for a server entry (shared by connect, probe and auth). */
@@ -159,16 +213,20 @@ export class McpManager {
 
   private async connect(name: string, entry: McpServerEntry): Promise<void> {
     const server = entry.config
+    const transport = this.transportFor(server, name)
+    const pid = transportPid(transport)
     try {
       const client = new Client({ name: "openorch", version: "0.1.0" })
       await withTimeout(
-        client.connect(this.transportFor(server, name)),
+        client.connect(transport),
         server.timeout && server.timeout > 0 ? server.timeout * 4 : 30_000,
         `MCP server "${name}" timed out while connecting`,
       )
-      this.servers.set(name, { name, scope: entry.scope, client, status: "connected" })
+      this.servers.set(name, { name, scope: entry.scope, client, transport, pid, status: "connected" })
       this.onStatus(`connected: ${name}`)
     } catch (error) {
+      killProcessTree(pid)
+      await this.closeState({ name, scope: entry.scope, client: undefined, transport, pid, status: "error" })
       const needsAuth = error instanceof UnauthorizedError || /unauthorized|401/i.test(error instanceof Error ? error.message : String(error))
       this.servers.set(name, {
         name,
@@ -184,17 +242,21 @@ export class McpManager {
   /** Connects once, lists tools and disconnects (mcp tool `test`). */
   async probe(server: McpServerConfig, name?: string): Promise<{ ok: boolean; tools: string[]; needsAuth?: boolean; error?: string }> {
     const client = new Client({ name: "openorch", version: "0.1.0" })
+    const transport = this.transportFor(server, name)
+    const pid = transportPid(transport)
     try {
       await withTimeout(
-        client.connect(this.transportFor(server, name)),
+        client.connect(transport),
         server.timeout && server.timeout > 0 ? server.timeout * 4 : 30_000,
         "MCP connection timed out",
       )
       const result = await client.listTools(undefined, this.requestOptions(server))
       const tools = (result.tools ?? []).map((tool) => tool.name)
+      killProcessTree(pid)
       await client.close().catch(() => undefined)
       return { ok: true, tools }
     } catch (error) {
+      killProcessTree(pid)
       await client.close().catch(() => undefined)
       const needsAuth = error instanceof UnauthorizedError || /unauthorized|401/i.test(error instanceof Error ? error.message : String(error))
       return { ok: false, tools: [], needsAuth, error: error instanceof Error ? error.message : String(error) }
@@ -390,12 +452,8 @@ export class McpManager {
   }
 
   async closeAll(): Promise<void> {
-    for (const state of this.servers.values()) {
-      try {
-        await state.client?.close?.()
-      } catch {
-        // ignore
-      }
+    for (const state of [...this.servers.values()]) {
+      await this.closeState(state)
     }
     this.servers.clear()
   }
@@ -537,6 +595,32 @@ function startCallbackServer(): Promise<{ redirectUrl: string; waitForCode: () =
       })
     })
   })
+}
+
+function transportPid(transport: StdioClientTransport | StreamableHTTPClientTransport): number | undefined {
+  return transport instanceof StdioClientTransport ? (transport.pid ?? undefined) : undefined
+}
+
+/**
+ * Kills an MCP stdio process and its descendants. `Client.close()` only signals
+ * the direct cmd/npx wrapper on Windows; the real agent Node process otherwise
+ * stays alive and keeps consuming hundreds of MB after a workspace switch.
+ */
+function killProcessTree(pid: number | undefined): void {
+  if (!pid) return
+  if (process.platform === "win32") {
+    try {
+      spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" })
+    } catch {
+      // best effort
+    }
+    return
+  }
+  try {
+    process.kill(pid, "SIGKILL")
+  } catch {
+    // already gone
+  }
 }
 
 /** Races a promise against a timeout so a hung server never blocks the app. */
