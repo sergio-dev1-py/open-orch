@@ -8,4 +8,13 @@ import "./styles/index.css"
 window.addEventListener("dragover", (event) => event.preventDefault())
 window.addEventListener("drop", (event) => event.preventDefault())
 
+// Keep renderer failures diagnosable instead of disappearing behind a blank or
+// frozen window. These logs also surface errors from message list rendering.
+window.addEventListener("error", (event) => {
+  console.error("[renderer] uncaught error:", event.error ?? event.message)
+})
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("[renderer] unhandled rejection:", event.reason)
+})
+
 render(() => <App />, document.getElementById("root")!)

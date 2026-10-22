@@ -159,6 +159,8 @@ async function main(): Promise<void> {
   })
   appHandle = app
   const page = await app.firstWindow()
+  const pageErrors: string[] = []
+  page.on("pageerror", (error) => pageErrors.push(error.message))
   await page.waitForLoadState("domcontentloaded")
   // Electron userData (localStorage) is shared between runs: start with a fresh dock
   // layout so tab counts are deterministic (the store reads it at module init).
@@ -491,7 +493,10 @@ async function main(): Promise<void> {
   await composer.fill("Piensa paso a paso antes de responder")
   await page.keyboard.press("Enter")
   await page.waitForSelector(".reasoning", { timeout: 30_000 })
-  const reasoningText = await page.locator(".reasoning").first().innerText()
+  const reasoningBlock = page.locator(".reasoning").first()
+  await reasoningBlock.scrollIntoViewIfNeeded()
+  await page.waitForTimeout(250)
+  const reasoningText = await reasoningBlock.innerText()
   check("reasoning: thinking block rendered", reasoningText.toLowerCase().includes("pensando") || reasoningText.toLowerCase().includes("pensamiento") || reasoningText.length > 0, reasoningText.slice(0, 40))
   await page.screenshot({ path: path.join(shotsDir, "06-reasoning.png") })
   await page.waitForTimeout(1500)
@@ -965,7 +970,10 @@ async function main(): Promise<void> {
   // The header shows the inherited model next to the description.
   await page.waitForSelector("text=Explorar con herencia", { timeout: 30_000 })
   await page.waitForTimeout(3000)
-  const inheritedCard = await page.locator(".tool-card:has-text('Explorar con herencia')").first().innerText()
+  const inheritedToolCard = page.locator(".tool-card:has-text('Explorar con herencia')").first()
+  await inheritedToolCard.scrollIntoViewIfNeeded()
+  await page.waitForTimeout(250)
+  const inheritedCard = await inheritedToolCard.innerText()
   check("subagents: card shows the inherited model", inheritedCard.includes("gpt-5.4"), inheritedCard.replaceAll("\n", " | ").slice(0, 110))
   check("subagents: card shows the minimal thinking level", inheritedCard.includes("#none"), inheritedCard.replaceAll("\n", " | ").slice(0, 110))
   {
@@ -1918,6 +1926,19 @@ async function main(): Promise<void> {
   )
   await page.keyboard.press("Escape")
   await page.waitForTimeout(400)
+
+  // ---------------------------------------------------------------- session switching
+  const switchTargets = page.locator(".session-item")
+  const switchCount = await switchTargets.count()
+  for (let index = 0; index < Math.min(switchCount, 6); index += 1) {
+    await switchTargets.nth(index).click()
+    await page.waitForTimeout(250)
+  }
+  check(
+    "sessions: switching through recent transcripts does not crash",
+    pageErrors.length === 0 && (await page.locator(".message-error").count()) === 0,
+    pageErrors.join(" | ").slice(0, 120),
+  )
 
   // ---------------------------------------------------------------- delete confirmation
   const sessionCountBefore = await page.locator(".session-item").count()
